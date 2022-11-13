@@ -19,9 +19,10 @@ package org.apache.spark.sql.hudi.command
 
 import org.apache.hudi.exception.HoodieException
 import org.apache.hudi.{HoodieSparkSqlWriter, SparkAdapterSupport}
+import org.apache.hudi.metrics.HoodieMetrics
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.catalog.{CatalogTable, HoodieCatalogTable}
-import org.apache.spark.sql.catalyst.expressions.{Alias, Cast, Literal, NamedExpression}
+import org.apache.spark.sql.catalyst.expressions.{Alias, Cast, Literal, NamedExpression, AttributeReference}
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project}
 import org.apache.spark.sql.execution.datasources.LogicalRelation
@@ -53,12 +54,17 @@ case class InsertIntoHoodieTableCommand(logicalRelation: LogicalRelation,
   extends HoodieLeafRunnableCommand {
   override def innerChildren: Seq[QueryPlan[_]] = Seq(query)
 
+  override val output: Seq[Attribute] = {
+    Seq(AttributeReference("num_affected_rows", LongType)())
+  }
+
   override def run(sparkSession: SparkSession): Seq[Row] = {
     assert(logicalRelation.catalogTable.isDefined, "Missing catalog table")
 
     val table = logicalRelation.catalogTable.get
     InsertIntoHoodieTableCommand.run(sparkSession, table, query, partitionSpec, overwrite)
-    Seq.empty[Row]
+    val recordsInserted = InsertIntoHoodieTableCommand.commitMetadata.fetchTotalInsertRecordsWritten()
+    Seq(Row(recordsInserted))
   }
 }
 
@@ -87,6 +93,7 @@ object InsertIntoHoodieTableCommand extends Logging with ProvidesHoodieConfig wi
           extraOptions: Map[String, String] = Map.empty): Boolean = {
     val catalogTable = new HoodieCatalogTable(sparkSession, table)
     val config = buildHoodieInsertConfig(catalogTable, sparkSession, overwrite, partitionSpec, extraOptions)
+    val commitMetadata
 
     // NOTE: In case of partitioned table we override specified "overwrite" parameter
     //       to instead append to the dataset
@@ -96,15 +103,20 @@ object InsertIntoHoodieTableCommand extends Logging with ProvidesHoodieConfig wi
       SaveMode.Append
     }
 
+
+
     val alignedQuery = alignQueryOutput(query, catalogTable, partitionSpec, sparkSession.sessionState.conf)
 
-    val (success, _, _, _, _, _) = HoodieSparkSqlWriter.write(sparkSession.sqlContext, mode, config, Dataset.ofRows(sparkSession, alignedQuery))
+    val (success, _, _, _, writeClient, _) = HoodieSparkSqlWriter.write(sparkSession.sqlContext, mode, config, Dataset.ofRows(sparkSession, alignedQuery))
 
     if (success && refreshTable) {
       sparkSession.catalog.refreshTable(table.identifier.unquotedString)
     }
+    if success {
+      commitMetadata = writeClient.getCommitMetadata()
+    }
 
-    success
+    (success)
   }
 
   /**
