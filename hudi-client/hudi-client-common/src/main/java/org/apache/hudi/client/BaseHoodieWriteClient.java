@@ -138,6 +138,8 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
   private transient HoodieWriteCommitCallback commitCallback;
 
   protected final transient HoodieMetrics metrics;
+
+  protected transient HoodieCommitMetadata commitMetadata = null;
   protected transient Timer.Context writeTimer = null;
   protected transient Timer.Context compactionTimer;
   protected transient Timer.Context clusteringTimer;
@@ -246,6 +248,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     // do this outside of lock since compaction, clustering can be time taking and we don't need a lock for the entire execution period
     runTableServicesInline(table, metadata, extraMetadata);
     emitCommitMetrics(instantTime, metadata, commitActionType);
+    this.commitMetadata = metadata;
     // callback if needed.
     if (config.writeCommitCallbackOn()) {
       if (null == commitCallback) {
@@ -1498,6 +1501,10 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
 
   public HoodieMetrics getMetrics() {
     return metrics;
+  }
+
+  public HoodieCommitMetadata getCommitMetadata() {
+    return commitMetadata;
   }
 
   public HoodieIndex<?, ?> getIndex() {

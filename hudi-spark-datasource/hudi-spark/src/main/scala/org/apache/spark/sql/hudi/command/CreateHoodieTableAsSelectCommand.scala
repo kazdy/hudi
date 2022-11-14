@@ -107,7 +107,7 @@ case class CreateHoodieTableAsSelectCommand(
         DataSourceWriteOptions.SQL_ENABLE_BULK_INSERT.key -> "true"
       )
       val partitionSpec = newTable.partitionColumnNames.map((_, None)).toMap
-      val success = InsertIntoHoodieTableCommand.run(sparkSession, newTable, reOrderedQuery, partitionSpec,
+      val (success, metrics) = InsertIntoHoodieTableCommand.run(sparkSession, newTable, reOrderedQuery, partitionSpec,
         mode == SaveMode.Overwrite, refreshTable = false, extraOptions = options)
       if (success) {
         // If write success, create the table in catalog if it has not synced to the

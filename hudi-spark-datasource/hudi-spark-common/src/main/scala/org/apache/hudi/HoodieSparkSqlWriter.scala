@@ -79,7 +79,7 @@ object HoodieSparkSqlWriter {
             asyncCompactionTriggerFn: Option[SparkRDDWriteClient[HoodieRecordPayload[Nothing]] => Unit] = Option.empty,
             asyncClusteringTriggerFn: Option[SparkRDDWriteClient[HoodieRecordPayload[Nothing]] => Unit] = Option.empty)
   : (Boolean, common.util.Option[String], common.util.Option[String], common.util.Option[String],
-    SparkRDDWriteClient[HoodieRecordPayload[Nothing]], HoodieTableConfig) = {
+    SparkRDDWriteClient[HoodieRecordPayload[Nothing]], HoodieTableConfig, Option[HoodieSQLMetrics]) = {
 
     assert(optParams.get("path").exists(!StringUtils.isNullOrEmpty(_)), "'path' must be set")
     val path = optParams("path")
@@ -133,7 +133,7 @@ object HoodieSparkSqlWriter {
 
     if (mode == SaveMode.Ignore && tableExists) {
       log.warn(s"hoodie table at $basePath already exists. Ignoring & not performing actual writes.")
-      (false, common.util.Option.empty(), common.util.Option.empty(), common.util.Option.empty(), hoodieWriteClient.orNull, tableConfig)
+      (false, common.util.Option.empty(), common.util.Option.empty(), common.util.Option.empty(), hoodieWriteClient.orNull, tableConfig, Option.empty)
     } else {
       // Handle various save modes
       handleSaveModes(sqlContext.sparkSession, mode, basePath, tableConfig, tblName, operation, fs)
@@ -180,7 +180,7 @@ object HoodieSparkSqlWriter {
         operation == WriteOperationType.BULK_INSERT) {
         val (success, commitTime: common.util.Option[String]) = bulkInsertAsRow(sqlContext, parameters, df, tblName,
           basePath, path, instantTime, partitionColumns)
-        return (success, commitTime, common.util.Option.empty(), common.util.Option.empty(), hoodieWriteClient.orNull, tableConfig)
+        return (success, commitTime, common.util.Option.empty(), common.util.Option.empty(), hoodieWriteClient.orNull, tableConfig, Option.empty)
       }
       // scalastyle:on
 
@@ -343,7 +343,9 @@ object HoodieSparkSqlWriter {
           writeResult, parameters, writeClient, tableConfig, jsc,
           TableInstantInfo(basePath, instantTime, commitActionType, operation))
 
-      (writeSuccessful, common.util.Option.ofNullable(instantTime), compactionInstant, clusteringInstant, writeClient, tableConfig)
+      val hoodieSQLMetrics: Option[HoodieSQLMetrics] = getHoodieSQLMetricsFromWriteClient(writeClient)
+
+      (writeSuccessful, common.util.Option.ofNullable(instantTime), compactionInstant, clusteringInstant, writeClient, tableConfig, hoodieSQLMetrics)
     }
   }
 
@@ -868,4 +870,18 @@ object HoodieSparkSqlWriter {
       Map.empty
     }
   }
+
+  private def getHoodieSQLMetricsFromWriteClient(writeClient: SparkRDDWriteClient[HoodieRecordPayload[Nothing]]): Option[HoodieSQLMetrics] = {
+    val commitMetadata = Option(writeClient.getCommitMetadata())
+    val metrics = commitMetadata match {
+      case Some(_) =>
+        Some(new HoodieSQLMetrics(commitMetadata.get))
+      case None =>
+        Option.empty
+    }
+    return metrics
+  }
+
 }
+
+
