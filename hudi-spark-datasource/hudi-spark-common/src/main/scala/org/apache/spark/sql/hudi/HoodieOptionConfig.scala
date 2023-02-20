@@ -56,6 +56,8 @@ object HoodieOptionConfig {
     .defaultValue(SQL_VALUE_TABLE_TYPE_COW)
     .build()
 
+  val SQL_NO_PRE_COMBINE : String = ""
+
   val SQL_KEY_PRECOMBINE_FIELD: HoodieSQLOption[String] = buildConf()
     .withSqlKey("preCombineField")
     .withHoodieKey(DataSourceWriteOptions.PRECOMBINE_FIELD.key)

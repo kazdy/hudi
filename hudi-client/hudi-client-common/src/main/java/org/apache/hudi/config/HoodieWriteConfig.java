@@ -133,6 +133,7 @@ public class HoodieWriteConfig extends HoodieConfig {
        .withDocumentation("Determine what level of persistence is used to cache write RDDs. "
           + "Refer to org.apache.spark.storage.StorageLevel for different values");
 
+  public static final String NO_PRE_COMBINE = "";
   public static final ConfigProperty<String> PRECOMBINE_FIELD_NAME = ConfigProperty
       .key("hoodie.datasource.write.precombine.field")
       .defaultValue("ts")
