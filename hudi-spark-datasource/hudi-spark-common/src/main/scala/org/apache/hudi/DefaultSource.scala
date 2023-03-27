@@ -200,7 +200,8 @@ class DefaultSource extends RelationProvider
                             schema: Option[StructType],
                             providerName: String,
                             parameters: Map[String, String]): Source = {
-    val offsetRangeLimit = parameters.getOrElse(START_OFFSET.key(), START_OFFSET.defaultValue()) match {
+    val offsetRangeLimit = parameters.getOrElse(STREAMING_READ_START_OFFSET.key(),
+                                                STREAMING_READ_START_OFFSET.defaultValue()) match {
       case offset if offset.equalsIgnoreCase("earliest") =>
         HoodieEarliestOffsetRangeLimit
       case offset if offset.equalsIgnoreCase("latest") =>

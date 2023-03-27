@@ -97,12 +97,38 @@ object DataSourceReadOptions {
     .withDocumentation("Enables use of the spark file index implementation for Hudi, "
       + "that speeds up listing of large tables.")
 
-  val START_OFFSET: ConfigProperty[String] = ConfigProperty
-    .key("hoodie.datasource.streaming.startOffset")
+  val STREAMING_READ_START_OFFSET: ConfigProperty[String] = ConfigProperty
+    .key("hoodie.datasource.streaming.read.startOffset")
     .defaultValue("earliest")
     .sinceVersion("0.13.0")
     .withDocumentation("Start offset to pull data from hoodie streaming source. allow earliest, latest, and " +
       "specified start instant time")
+
+  val STREAMING_READ_FAIL_ON_DATA_LOSS: ConfigProperty[String] = ConfigProperty
+    .key("hoodie.datasource.streaming.read.failOnDataLoss")
+    .defaultValue(false)
+    .sinceVersion("0.14.0")
+    .withDocumentation("When set to true, the query will fail when it’s possible that data is lost " +
+      "e.g. commits were cleaned or archived an are no longer available in Hudi timeline. If set to false, " +
+      "the query will start from the earliest available commit/offset. Related to STREAMING_READ_FULL_TABLE_SCAN.")
+
+  val STREAMING_READ_FULL_TABLE_SCAN: ConfigProperty[String] = ConfigProperty
+    .key("hoodie.datasource.streaming.read.fulltablescan.enable")
+    .defaultValue(false)
+    .sinceVersion("0.14.0")
+    .withDocumentation("when true and failOnDataLoss is false (default), fallback to fulltable scan when " +
+      "\"start offset\" commit is cleaned or archived. We don't want to read from the earliest commit in " +
+      "the table in this case, but rather treat cleaned/archived commits as if " +
+      "these were available in active timeline. Related to STREAMING_READ_FAIL_ON_DATA_LOSS.")
+
+  val STREAMING_READ_MAX_INSTANTS_PER_TRIGGER: ConfigProperty[String] = ConfigProperty
+    .key("hoodie.datasource.read.streaming.maxInstantsPerTrigger")
+    .noDefaultValue()
+    .sinceVersion("0.14.0")
+    .withDocumentation("when true and failOnDataLoss is false (default), fallback to fulltable scan when " +
+      "\"start offset\" commit is cleaned or archived. We don't want to read from the earliest commit in " +
+      "the table in this case, but rather treat cleaned/archived commits as if " +
+      "these were available in active timeline. Related to STREAMING_READ_FAIL_ON_DATA_LOSS.")
 
   val BEGIN_INSTANTTIME: ConfigProperty[String] = ConfigProperty
     .key("hoodie.datasource.read.begin.instanttime")

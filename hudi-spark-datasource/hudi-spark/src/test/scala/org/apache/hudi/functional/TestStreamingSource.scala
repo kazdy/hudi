@@ -17,7 +17,7 @@
 
 package org.apache.hudi.functional
 
-import org.apache.hudi.DataSourceReadOptions.START_OFFSET
+import org.apache.hudi.DataSourceReadOptions.STREAMING_READ_START_OFFSET
 import org.apache.hudi.DataSourceWriteOptions
 import org.apache.hudi.DataSourceWriteOptions.{PRECOMBINE_FIELD, RECORDKEY_FIELD}
 import org.apache.hudi.common.model.HoodieTableType.{COPY_ON_WRITE, MERGE_ON_READ}
@@ -157,7 +157,7 @@ class TestStreamingSource extends StreamTest {
       addData(tablePath, Seq(("1", "a1", "10", "000")))
       val df = spark.readStream
         .format("org.apache.hudi")
-        .option(START_OFFSET.key(), "latest")
+        .option(STREAMING_READ_START_OFFSET.key(), "latest")
         .load(tablePath)
         .select("id", "name", "price", "ts")
 
