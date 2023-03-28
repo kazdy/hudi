@@ -121,6 +121,8 @@ class HoodieStreamSource(
     val endOffset = HoodieSourceOffset(end)
 
     if (startOffset == endOffset) {
+      // this will only happen when MicrobatcchExecution is restarted, the DF will be truncated so
+      // it makes sense to return an empty DF right away
       sqlContext.internalCreateDataFrame(
         sqlContext.sparkContext.emptyRDD[InternalRow].setName("empty"), schema, isStreaming = true)
     } else {

@@ -24,8 +24,9 @@ import org.apache.hudi.common.model.HoodieTableType.{COPY_ON_WRITE, MERGE_ON_REA
 import org.apache.hudi.common.table.HoodieTableMetaClient
 import org.apache.hudi.config.HoodieWriteConfig.{DELETE_PARALLELISM_VALUE, INSERT_PARALLELISM_VALUE, TBL_NAME, UPSERT_PARALLELISM_VALUE}
 import org.apache.log4j.Level
+import org.apache.spark.SparkException
 import org.apache.spark.sql.streaming.StreamTest
-import org.apache.spark.sql.{Row, SaveMode}
+import org.apache.spark.sql.{Row, SaveMode, SparkSession}
 
 class TestStreamingSource extends StreamTest {
 
@@ -36,6 +37,12 @@ class TestStreamingSource extends StreamTest {
     INSERT_PARALLELISM_VALUE.key -> "4",
     UPSERT_PARALLELISM_VALUE.key -> "4",
     DELETE_PARALLELISM_VALUE.key -> "4"
+  )
+
+  private val cleanerOptions = Map(
+    "hoodie.cleaner.commits.retained" -> "3",
+    "hoodie.keep.min.commits" -> "4",
+    "hoodie.keep.max.commits" -> "5"
   )
   private val columns = Seq("id", "name", "price", "ts")
 
@@ -58,18 +65,19 @@ class TestStreamingSource extends StreamTest {
         .setPreCombineField("ts")
           .initTable(spark.sessionState.newHadoopConf(), tablePath)
 
-      addData(tablePath, Seq(("1", "a1", "10", "000")))
+      addData(tablePath, Seq(("1", "a1", "10", "000")), commonOptions)
       val df = spark.readStream
         .format("org.apache.hudi")
         .load(tablePath)
         .select("id", "name", "price", "ts")
 
       testStream(df)(
+        StartStream(),
         AssertOnQuery {q => q.processAllAvailable(); true },
         CheckAnswerRows(Seq(Row("1", "a1", "10", "000")), lastOnly = true, isSorted = false),
         StopStream,
 
-        addDataToQuery(tablePath, Seq(("1", "a1", "12", "000"))),
+        addDataToQuery(tablePath, Seq(("1", "a1", "12", "000")), commonOptions),
         StartStream(),
         AssertOnQuery {q => q.processAllAvailable(); true },
         CheckAnswerRows(Seq(Row("1", "a1", "12", "000")), lastOnly = true, isSorted = false),
@@ -77,7 +85,7 @@ class TestStreamingSource extends StreamTest {
         addDataToQuery(tablePath,
           Seq(("2", "a2", "12", "000"),
               ("3", "a3", "12", "000"),
-              ("4", "a4", "12", "000"))),
+              ("4", "a4", "12", "000")), commonOptions),
         AssertOnQuery {q => q.processAllAvailable(); true },
         CheckAnswerRows(
           Seq(Row("2", "a2", "12", "000"),
@@ -86,9 +94,9 @@ class TestStreamingSource extends StreamTest {
           lastOnly = true, isSorted = false),
           StopStream,
 
-        addDataToQuery(tablePath, Seq(("5", "a5", "12", "000"))),
-        addDataToQuery(tablePath, Seq(("6", "a6", "12", "000"))),
-        addDataToQuery(tablePath, Seq(("5", "a5", "15", "000"))),
+        addDataToQuery(tablePath, Seq(("5", "a5", "12", "000")), commonOptions),
+        addDataToQuery(tablePath, Seq(("6", "a6", "12", "000")), commonOptions),
+        addDataToQuery(tablePath, Seq(("5", "a5", "15", "000")), commonOptions),
         StartStream(),
         AssertOnQuery {q => q.processAllAvailable(); true },
         CheckAnswerRows(
@@ -109,7 +117,7 @@ class TestStreamingSource extends StreamTest {
         .setPreCombineField("ts")
         .initTable(spark.sessionState.newHadoopConf(), tablePath)
 
-      addData(tablePath, Seq(("1", "a1", "10", "000")))
+      addData(tablePath, Seq(("1", "a1", "10", "000")), commonOptions)
       val df = spark.readStream
         .format("org.apache.hudi")
         .load(tablePath)
@@ -123,7 +131,7 @@ class TestStreamingSource extends StreamTest {
         addDataToQuery(tablePath,
           Seq(("2", "a2", "12", "000"),
             ("3", "a3", "12", "000"),
-            ("2", "a2", "10", "001"))),
+            ("2", "a2", "10", "001")), commonOptions),
         StartStream(),
         AssertOnQuery {q => q.processAllAvailable(); true },
         CheckAnswerRows(
@@ -132,8 +140,8 @@ class TestStreamingSource extends StreamTest {
           lastOnly = true, isSorted = false),
         StopStream,
 
-        addDataToQuery(tablePath, Seq(("5", "a5", "12", "000"))),
-        addDataToQuery(tablePath, Seq(("6", "a6", "12", "000"))),
+        addDataToQuery(tablePath, Seq(("5", "a5", "12", "000")), commonOptions),
+        addDataToQuery(tablePath, Seq(("6", "a6", "12", "000")), commonOptions),
         StartStream(),
         AssertOnQuery {q => q.processAllAvailable(); true },
         CheckAnswerRows(
@@ -154,7 +162,7 @@ class TestStreamingSource extends StreamTest {
         .setPreCombineField("ts")
         .initTable(spark.sessionState.newHadoopConf(), tablePath)
 
-      addData(tablePath, Seq(("1", "a1", "10", "000")))
+      addData(tablePath, Seq(("1", "a1", "10", "000")), commonOptions)
       val df = spark.readStream
         .format("org.apache.hudi")
         .option(STREAMING_READ_START_OFFSET.key(), "latest")
@@ -167,7 +175,7 @@ class TestStreamingSource extends StreamTest {
         CheckAnswerRows(Seq(), lastOnly = true, isSorted = false),
         StopStream,
 
-        addDataToQuery(tablePath, Seq(("2", "a1", "12", "000"))),
+        addDataToQuery(tablePath, Seq(("2", "a1", "12", "000")), commonOptions),
         StartStream(),
         AssertOnQuery {q => q.processAllAvailable(); true },
         CheckAnswerRows(Seq(Row("2", "a1", "12", "000")), lastOnly = false, isSorted = false)
@@ -185,15 +193,15 @@ class TestStreamingSource extends StreamTest {
         .setPreCombineField("ts")
         .initTable(spark.sessionState.newHadoopConf(), tablePath)
 
-      addData(tablePath, Seq(("1", "a1", "10", "000")))
-      addData(tablePath, Seq(("2", "a1", "11", "001")))
-      addData(tablePath, Seq(("3", "a1", "12", "002")))
+      addData(tablePath, Seq(("1", "a1", "10", "000")), commonOptions)
+      addData(tablePath, Seq(("2", "a1", "11", "001")), commonOptions)
+      addData(tablePath, Seq(("3", "a1", "12", "002")), commonOptions)
 
       val timestamp = metaClient.getActiveTimeline.getCommitsTimeline.filterCompletedInstants()
         .firstInstant().get().getTimestamp
       val df = spark.readStream
         .format("org.apache.hudi")
-        .option(START_OFFSET.key(), timestamp)
+        .option(STREAMING_READ_START_OFFSET.key(), timestamp)
         .load(tablePath)
         .select("id", "name", "price", "ts")
 
@@ -205,20 +213,69 @@ class TestStreamingSource extends StreamTest {
     }
   }
 
-  private def addData(inputPath: String, rows: Seq[(String, String, String, String)]): Unit = {
+  test("Test throws exception after restart from checkpoint" +
+    "if the offset no longer exists in the timeline") {
+    withTempDir { inputDir =>
+      val tablePath = s"${inputDir.getCanonicalPath}/test_cow_stream"
+      val checkpointDir = s"${inputDir.getCanonicalPath}/checkpoint"
+      val metaClient = HoodieTableMetaClient.withPropertyBuilder()
+        .setTableType(COPY_ON_WRITE)
+        .setTableName(getTableName(tablePath))
+        .setPayloadClassName(DataSourceWriteOptions.PAYLOAD_CLASS_NAME.defaultValue)
+        .setPreCombineField("ts")
+        .initTable(spark.sessionState.newHadoopConf(), tablePath)
+
+      val writeOptions = commonOptions ++ cleanerOptions
+
+      addData(tablePath, Seq(("1", "a1", "10", "000")), writeOptions)
+
+      val df = spark.readStream
+        .format("org.apache.hudi")
+        .load(tablePath)
+        .select("id", "name", "price", "ts")
+      // tests with checkpoints
+      // https://github.com/apache/spark/blob/6e4c352d5f91f8343cec748fea4723178d5ae9af/sql/core/src/test/scala/org/apache/spark/sql/streaming/StreamingQueryManagerSuite.scala
+      // https://github.com/apache/spark/blob/6e4c352d5f91f8343cec748fea4723178d5ae9af/sql/core/src/test/scala/org/apache/spark/sql/streaming/StreamingQuerySuite.scala
+      testStream(df)(
+        // Consume available instants and stop the query
+        AssertOnQuery { q => q.processAllAvailable(); true },
+        CheckAnswerRows(Seq(Row("1", "a1", "10", "000")), lastOnly = true, isSorted = false),
+        StopStream,
+
+        addDataToQuery(tablePath, Seq(("2", "a2", "12", "000")), writeOptions),
+        addDataToQuery(tablePath, Seq(("3", "a3", "12", "000")), writeOptions),
+        addDataToQuery(tablePath, Seq(("4", "a4", "12", "000")), writeOptions),
+        addDataToQuery(tablePath, Seq(("5", "a5", "12", "000")), writeOptions),
+        addDataToQuery(tablePath, Seq(("6", "a6", "12", "000")), writeOptions),
+        addDataToQuery(tablePath, Seq(("7", "a7", "12", "000")), writeOptions),
+        addDataToQuery(tablePath, Seq(("8", "a8", "12", "000")), writeOptions),
+        addDataToQuery(tablePath, Seq(("9", "a9", "12", "000")), writeOptions),
+
+        StartStream(),
+        ExpectFailure[SparkException](),
+        AssertOnQuery(_.isActive === false),
+        AssertOnQuery(q => {
+          q.exception.get.message.contains("No instant found for commit time")
+        }, "Incorrect exception message on restart when start offset no longer exists in the timeline")
+      )
+    }
+  }
+
+  private def addData(inputPath: String, rows: Seq[(String, String, String, String)], writeOptions: Map[String, String]): Unit = {
     rows.toDF(columns: _*)
       .write
       .format("org.apache.hudi")
-      .options(commonOptions)
+      .options(writeOptions)
       .option(TBL_NAME.key, getTableName(inputPath))
       .mode(SaveMode.Append)
       .save(inputPath)
   }
 
   private def addDataToQuery(inputPath: String,
-                             rows: Seq[(String, String, String, String)]): AssertOnQuery = {
+                             rows: Seq[(String, String, String, String)],
+                             writeOptions: Map[String, String]): AssertOnQuery = {
     AssertOnQuery { _=>
-      addData(inputPath, rows)
+      addData(inputPath, rows, writeOptions)
       true
     }
   }
