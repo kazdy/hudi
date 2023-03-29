@@ -255,6 +255,10 @@ class TestStreamingSource extends StreamTest {
         ExpectFailure[SparkException](),
         AssertOnQuery(_.isActive === false),
         AssertOnQuery(q => {
+          !q.exception.get.message.contains("java.lang.NullPointerException")
+        }, "Should not throw java.lang.NullPointerException " +
+          "on restart when start offset no longer exists in the timeline"),
+        AssertOnQuery(q => {
           q.exception.get.message.contains("No instant found for commit time")
         }, "Incorrect exception message on restart when start offset no longer exists in the timeline")
       )
